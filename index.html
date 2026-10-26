@@ -159,7 +159,8 @@ window.REGEN_CONFIG = {
           <button class="btn" id="login">Se connecter avec Microsoft</button>
         </div>
         <div id="step-who" class="hidden">
-          <p>Connecté·e en tant que <b id="whoami"></b>. Choisissez votre nom :</p>
+          <p>Connecté·e en tant que <b id="whoami"></b>. <button class="btn ghost small" id="logout1" type="button">Changer de compte</button></p>
+          <p>Choisissez votre nom :</p>
           <div class="row"><select id="sheetsel"></select><button class="btn" id="open">Ouvrir mes modules</button></div>
         </div>
         <p class="msg" id="startmsg"></p>
@@ -181,6 +182,7 @@ window.REGEN_CONFIG = {
         <div class="row">
           <button class="btn ghost small" id="refresh">Actualiser</button>
           <button class="btn ghost small" id="quit">Changer d'enseignant</button>
+          <button class="btn ghost small" id="logout2">Se déconnecter</button>
         </div>
       </div>
       <div class="notice info">Une note soumise est <b>définitive</b> : elle ne peut plus être modifiée depuis cette page. En cas d'erreur, contactez l'équipe pédagogique. Pour une absence, laissez la case vide.</div>
@@ -193,7 +195,7 @@ window.REGEN_CONFIG = {
     <h1>Suivi et export des notes</h1>
     <p class="lead">Réservé à l'équipe pédagogique. La page lit tous les onglets du classeur et permet de télécharger les notes soumises en CSV, au complet ou par enseignant et par classe.</p>
     <div class="card startbox">
-      <button class="btn" id="aload">Se connecter et charger les notes</button>
+      <div class="row"><button class="btn" id="aload">Se connecter et charger les notes</button><button class="btn ghost hidden" id="logout3">Se déconnecter</button></div>
       <p class="msg" id="amsg"></p>
     </div>
     <div id="aview" class="hidden">
@@ -320,14 +322,15 @@ const M365 = {
       cache:{cacheLocation:"localStorage"}
     });
     return this.ready = this.app.initialize().then(()=>this.app.handleRedirectPromise()).then(r => {
-      this.account = (r && r.account) || this.app.getAllAccounts()[0] || null;
+      this.account = (r && r.account) || this.app.getActiveAccount() || this.app.getAllAccounts()[0] || null;
+      if (this.account) this.app.setActiveAccount(this.account);
     }).catch(e => console.warn(e));
   },
   async login(){
     await this.init();
     if (window.REGEN_TEST_TOKEN){ this.account = {username:window.REGEN_TEST_TOKEN}; return this.account; }
     if (!this.configured) throw new Error("La page n'est pas encore configurée (identifiants Microsoft manquants, voir README).");
-    try{ const r = await this.app.loginPopup({scopes:SCOPES, prompt:"select_account"}); this.account = r.account; return r.account; }
+    try{ const r = await this.app.loginPopup({scopes:SCOPES, prompt:"select_account"}); this.account = r.account; this.app.setActiveAccount(r.account); return r.account; }
     catch(e){ if (/popup_window_error|empty_window_error/.test(String(e.errorCode||""))) await this.app.loginRedirect({scopes:SCOPES}); throw e; }
   },
   async token(){
@@ -350,6 +353,16 @@ const M365 = {
       const err = new Error(msg); err.status = res.status; throw err;
     }
     return res.status===204 ? null : res.json();
+  },
+  /* Déconnexion locale : oublie le compte dans cette page, sans fermer la session Microsoft des autres applications */
+  async logout(){
+    if (this.app){
+      const acc = this.account;
+      try{ if (typeof this.app.clearCache === "function") await this.app.clearCache({account:acc}); }catch(_){}
+      try{ this.app.setActiveAccount(null); }catch(_){}
+      try{ for (const k of Object.keys(localStorage)) if (k.includes(CFG.clientId) || (acc && k.includes(acc.homeAccountId))) localStorage.removeItem(k); }catch(_){}
+    }
+    this.account = null;
   },
   async openSession(){ try{ const r = await this.call("POST","/createSession",{persistChanges:true}); this.session = r.id; }catch(e){ this.session = null; } },
   async closeSession(){ if (!this.session) return; try{ await this.call("POST","/closeSession"); }catch(_){} this.session = null; },
@@ -703,6 +716,15 @@ $("#login").addEventListener("click", async ()=>{
   try{ await M365.login(); await afterLogin(); }
   catch(e){ if (!/user_cancelled/.test(String(e.errorCode||""))){ $("#startmsg").className="msg errtxt"; $("#startmsg").textContent = e.message||String(e); } }
 });
+async function doLogout(){
+  saveDraft(); await M365.logout(); T=null; ADM=[]; store.del("lastsheet");
+  history.replaceState(null, "", location.pathname);
+  $("#editor").classList.add("hidden"); $("#bottombar").classList.add("hidden"); $("#start").classList.remove("hidden");
+  $("#step-who").classList.add("hidden"); $("#step-login").classList.remove("hidden");
+  $("#aview").classList.add("hidden"); $("#logout3").classList.add("hidden"); $("#amsg").textContent="";
+  $("#startmsg").className="msg"; $("#startmsg").textContent = "Vous êtes déconnecté·e de cette page. Cliquez sur « Se connecter avec Microsoft » pour choisir un autre compte.";
+}
+["#logout1","#logout2","#logout3"].forEach(id => $(id).addEventListener("click", doLogout));
 $("#open").addEventListener("click", ()=>{ const v = $("#sheetsel").value; if (v) openTeacher(v); });
 $("#quit").addEventListener("click", ()=>{ saveDraft(); store.del("lastsheet"); T=null; $("#editor").classList.add("hidden"); $("#bottombar").classList.add("hidden"); $("#start").classList.remove("hidden"); });
 $("#refresh").addEventListener("click", async ()=>{ $("#refresh").disabled=true; try{ await reloadTeacher(); }catch(e){ alert(e.message); } $("#refresh").disabled=false; });
@@ -776,7 +798,7 @@ async function adminLoad(){
     let n=0;
     const parts = await pool(names, 4, async name => { const u = await M365.call("GET", M365.ws(name)+"/usedRange(valuesOnly=true)?$select=values"); msg.textContent = "Lecture des onglets : "+(++n)+" / "+names.length; return parseSheet(name, u.values||[]); });
     ADM = parts.flat();
-    msg.textContent = names.length+" onglets lus · connecté·e en tant que "+(M365.account?.username||"")+".";
+    msg.textContent = names.length+" onglets lus · connecté·e en tant que "+(M365.account?.username||"")+"."; $("#logout3").classList.remove("hidden");
     $("#aview").classList.remove("hidden"); renderAdmin();
   }catch(e){ msg.className="msg errtxt"; msg.textContent = e.message||String(e); }
 }
