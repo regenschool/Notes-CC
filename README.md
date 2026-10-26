@@ -1,44 +1,78 @@
-# Saisie des notes de contrôle continu — Regen School
+# Saisie des notes de contrôle continu — Regen School (option A)
 
-Page web autonome (un seul fichier `index.html`). Elle contient déjà les modules et les listes d'étudiants de chaque enseignant. L'enseignant ouvre son lien personnel, crée ses épreuves, saisit ses notes et télécharge un CSV. L'équipe pédagogique consolide ensuite tous les CSV reçus.
+Page web (`index.html`, hébergée sur GitHub Pages) qui sert d'interface enseignante au classeur
+**Notes_CC_Regen_School_2026-2027 - Automate.xlsx**. Elle écrit directement dans les tableaux Excel de ce classeur,
+au format attendu par le script `ExtraireEvaluationCompletes`. **Le flux Power Automate n'est pas modifié.**
 
-## Confidentialité
+## Ce que fait la page
 
-Les données (noms des étudiants, liens Notion) sont **chiffrées dans la page**, enseignant par enseignant. Chaque enseignant a son propre code d'accès, qui ne déchiffre que ses modules. Le dépôt peut donc être public : sans code, la page ne révèle aucun nom.
+1. **Connexion.** L'enseignant se connecte avec son compte Microsoft Regen School. Son onglet s'ouvre automatiquement s'il arrive par son lien personnel ; sinon, il choisit son nom.
+2. **Lecture.** La page lit les tableaux Excel de son onglet : modules, étudiants, ID de base Notion, et notes déjà soumises.
+3. **Saisie.** Il crée ses épreuves (intitulé, type parmi les cinq valeurs du classeur, pondération), puis saisit les notes sur 20. Sa saisie est conservée dans son navigateur tant qu'elle n'est pas soumise.
+4. **Soumission.** Il soumet après une confirmation. Chaque note remplit une ligne vide préremplie de l'étudiant ; s'il n'en reste plus, une ligne est ajoutée au tableau.
+5. **Verrouillage.** Une note soumise est **définitive** : la page ne modifie jamais une ligne qui contient déjà une note. L'enseignant peut seulement consulter ses notes soumises, compléter les étudiants manquants ou ajouter de nouvelles épreuves.
 
-Dans le lien personnel, le code se trouve après le `#`. Cette partie de l'adresse n'est jamais transmise à GitHub.
+L'onglet **Administration** lit tous les onglets et exporte les notes soumises en CSV, au complet ou par enseignant et par classe.
 
-Le fichier `Codes_acces_enseignants.xlsx` est confidentiel : ne le déposez jamais dans le dépôt.
+## Ce qui est écrit dans le classeur
 
-## Mise en ligne sur GitHub Pages
+| Colonne Excel | Valeur écrite |
+|---|---|
+| Intitulé de l’épreuve | intitulé saisi |
+| Type d’épreuve | Ecrit individuel, Ecrit collectif, Oral individuel, Oral collectif ou Autre |
+| Note | nombre de 0 à 20 (14,5 enregistré en 14.5) |
+| Pondération dans la moyenne (%) | fraction : 40 % est enregistré **0,4** |
+| Commentaire | texte facultatif |
 
-1. Sur github.com, créez un dépôt (par exemple `notes-cc`).
-2. Cliquez sur **Add file › Upload files**, déposez `index.html` et ce `README.md`, puis **Commit changes**.
-3. Ouvrez **Settings › Pages**. Dans « Build and deployment », choisissez **Deploy from a branch**, branche `main`, dossier `/ (root)`, puis **Save**.
-4. Après une à deux minutes, la page est disponible à l'adresse `https://<votre-compte>.github.io/notes-cc/`.
-5. Dans `Codes_acces_enseignants.xlsx`, remplacez l'adresse de la cellule B2 par celle de votre page : les 45 liens personnels se mettent à jour.
+Les colonnes Étudiant, Lien espace Notion, ID base Notes Notion, Nom du module et Enseignant ne sont jamais modifiées. Elles sont seulement recopiées quand une ligne doit être ajoutée.
 
-## Déroulé
+**Absences.** Le script ignorant toute valeur non numérique, la page n'accepte que des nombres. Pour une absence, l'enseignant laisse la case vide.
 
-1. **Envoi.** Chaque enseignant reçoit son lien personnel (colonne E du fichier des codes).
-2. **Saisie.** En ouvrant son lien, il voit ses modules et ses étudiants. Il crée ses épreuves (intitulé et pondération, total de 100 % par module), puis saisit les notes sur 20. La virgule est acceptée, et « ABS » ou « ABJ » indiquent une absence. Il peut aussi ajouter un commentaire.
-3. **Reprise.** La saisie est sauvegardée automatiquement dans son navigateur : en rouvrant son lien, il retrouve son travail. Pour changer d'ordinateur, il peut recharger le CSV qu'il a exporté.
-4. **Retour.** Il clique sur « Télécharger mon CSV » et vous l'envoie.
-5. **Consolidation.** Dans l'onglet « Consolidation », déposez tous les CSV reçus pour obtenir un fichier unique. Les doublons sont écartés et les notes vides sont signalées.
+## Limites connues (acceptées pour cette première phase)
 
-## Mettre à jour les listes (nouvel étudiant, nouveau module…)
+- **Accès au classeur entier.** Pour que la page puisse écrire, chaque enseignant doit avoir le classeur partagé en modification. Il pourrait donc l'ouvrir directement dans Excel et y voir les autres onglets.
+- **Corrections hors de la page.** Une correction faite directement dans Excel créerait un doublon dans Notion au lancement suivant du flux. Les corrections restent du ressort de l'équipe pédagogique.
+- **Structure du classeur à préserver.** Ne renommez pas les colonnes et ne transformez pas les tableaux Excel en simples plages : le script et la page s'appuient dessus.
 
-Modifiez le classeur Excel source, puis régénérez la page :
+---
 
-```
-pip install openpyxl cryptography
-python3 outils/build_data.py Notes_CC_Regen_School_2026-2027.xlsx index.html Codes_acces_enseignants.xlsx
-```
+## Mise en place
 
-Les codes déjà attribués sont conservés ; seuls les nouveaux enseignants reçoivent un code. Déposez ensuite le nouvel `index.html` sur GitHub. Les saisies déjà faites par les enseignants sont conservées dans leur navigateur.
+### Partie 1 — Partager le classeur (5 minutes)
 
-## Format du CSV
+1. Dans OneDrive, sélectionnez **Notes_CC_Regen_School_2026-2027 - Automate.xlsx** › **Partager**.
+2. Choisissez **Personnes spécifiques**, ajoutez les enseignants (ou le groupe « Enseignants CC ») avec le droit **Peut modifier**, puis décochez l'envoi d'un e-mail si vous ne souhaitez pas les prévenir maintenant.
+3. Ne déplacez pas le fichier vers un autre OneDrive ou un autre site : la page le retrouve par son identifiant. Le renommer ou le déplacer dans votre OneDrive ne pose pas de problème.
 
-Séparateur `;`, encodage UTF-8 (avec BOM, pour une ouverture directe dans Excel en français), une ligne par étudiant et par épreuve :
+### Partie 2 — Inscrire l'application dans Entra ID (10 minutes)
 
-`Enseignant ; Intitulé du module ; Promotion ; Campus ; Semestre ; Code module ; Étudiant ; Lien espace Notion ; Intitulé de l'épreuve ; Note ; Pondération dans la moyenne (%) ; Commentaire`
+1. Allez sur **entra.microsoft.com › Applications › Inscriptions d'applications › Nouvelle inscription**.
+   - Nom : `Notes CC`
+   - Types de comptes : **Comptes dans cet annuaire d'organisation uniquement**
+   - URI de redirection : plateforme **Application monopage (SPA)**, adresse `https://VOTRE-COMPTE.github.io/notes-cc/`
+   - Cliquez sur **Inscrire**.
+2. Dans **Authentification**, ajoutez une seconde URI SPA : `https://VOTRE-COMPTE.github.io/notes-cc/index.html`.
+3. Sur la page **Vue d'ensemble**, copiez l'**ID d'application (client)** et l'**ID de l'annuaire (locataire)**.
+4. Dans **Autorisations d'API › Ajouter une autorisation › Microsoft Graph › Autorisations déléguées**, cochez **Files.ReadWrite.All**, puis cliquez sur **Ajouter des autorisations**. User.Read est déjà présente.
+5. Cliquez sur **Accorder un consentement d'administrateur pour Regen School**.
+
+Pourquoi « déléguée » : la page agit avec les droits de la personne connectée, jamais au-delà. Elle ne peut donc atteindre que les fichiers que cette personne peut déjà ouvrir. L'autorisation « .All » est nécessaire pour écrire dans un fichier partagé par quelqu'un d'autre.
+
+### Partie 3 — Configurer la page
+
+1. Sur GitHub, ouvrez `index.html`, cliquez sur le crayon (Edit).
+2. En haut du fichier, renseignez `tenantId` et `clientId`. Les champs `driveId` et `itemId`, qui désignent le classeur, sont déjà remplis.
+3. Cliquez sur **Commit changes**.
+
+### Partie 4 — Tester avant d'envoyer les liens
+
+1. Ouvrez la page, connectez-vous, choisissez un onglet de test (par exemple le vôtre), créez une épreuve « TEST » et soumettez une note.
+2. Vérifiez dans Excel pour le web que la ligne est remplie, avec la pondération affichée en pourcentage.
+3. Lancez le flux Power Automate et vérifiez la création dans la base Notion de l'étudiant.
+4. Supprimez la ligne de test dans Excel et la page de test dans Notion.
+
+---
+
+## Liens personnels
+
+`Codes_acces_enseignants.xlsx` (confidentiel, à ne pas déposer sur GitHub) contient un lien par enseignant : il ouvre directement son onglet après la connexion. Sans lien, l'enseignant choisit son nom dans une liste.
